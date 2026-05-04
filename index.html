@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>家計簿アプリ</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: sans-serif; background: #f5f5f5; color: #333; padding: 20px; }
+    h1 { text-align: center; margin-bottom: 24px; font-size: 24px; color: #444; }
+    .card { background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+    h2 { font-size: 16px; font-weight: 500; margin-bottom: 16px; color: #555; }
+    .form-group { margin-bottom: 12px; }
+    label { display: block; font-size: 13px; color: #666; margin-bottom: 4px; }
+    input, select, textarea { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
+    .radio-group { display: flex; gap: 16px; margin-top: 4px; }
+    .radio-group label { display: flex; align-items: center; gap: 6px; font-size: 14px; color: #333; cursor: pointer; }
+    button { width: 100%; padding: 10px; background: #4a7cf7; color: #fff; border: none; border-radius: 8px; font-size: 15px; cursor: pointer; margin-top: 8px; }
+    button:hover { background: #3565e0; }
+    button:disabled { background: #aaa; cursor: not-allowed; }
+    .btn-scan { background: #7c3aed; }
+    .btn-scan:hover { background: #6d28d9; }
+    .summary { display: flex; gap: 12px; }
+    .summary-item { flex: 1; background: #f9f9f9; border-radius: 8px; padding: 12px; text-align: center; border: 1px solid #eee; }
+    .summary-item .label { font-size: 12px; color: #888; margin-bottom: 4px; }
+    .summary-item .amount { font-size: 18px; font-weight: 500; }
+    .income { color: #2ecc71; }
+    .expense { color: #e74c3c; }
+    .balance { color: #4a7cf7; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { text-align: left; padding: 8px; border-bottom: 2px solid #eee; color: #888; font-weight: 500; font-size: 12px; }
+    td { padding: 10px 8px; border-bottom: 1px solid #f0f0f0; }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; }
+    .tag.income { background: #e8f8ef; color: #27ae60; }
+    .tag.expense { background: #fdecea; color: #c0392b; }
+    .del-btn { width: auto; background: none; color: #ccc; font-size: 16px; padding: 2px 8px; border: none; cursor: pointer; margin: 0; }
+    .del-btn:hover { color: #e74c3c; background: none; }
+    .empty { text-align: center; color: #bbb; padding: 20px; font-size: 14px; }
+    .scan-preview { width: 100%; max-height: 200px; object-fit: contain; border-radius: 8px; margin-bottom: 12px; border: 1px solid #eee; }
+    .scan-result { background: #f0f7ff; border: 1px solid #b3d4f7; border-radius: 8px; padding: 12px; margin-top: 12px; font-size: 14px; color: #1a4a8a; }
+    .loading { text-align: center; color: #7c3aed; font-size: 14px; padding: 12px; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .tab { flex: 1; padding: 8px; background: #f0f0f0; border: none; border-radius: 8px; font-size: 14px; color: #666; cursor: pointer; }
+    .tab.active { background: #4a7cf7; color: #fff; }
+  </style>
+</head>
+<body>
+
+<h1>家計簿</h1>
+
+<!-- タブ切り替え -->
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('manual')">手入力</button>
+  <button class="tab" onclick="switchTab('scan')">レシートスキャン</button>
+</div>
+
+<!-- 手入力フォーム -->
+<div id="tab-manual" class="card">
+  <h2>収支を入力</h2>
+  <div class="form-group">
+    <label>種別</label>
+    <div class="radio-group">
+      <label><input type="radio" name="type" value="income" checked> 収入</label>
+      <label><input type="radio" name="type" value="expense"> 支出</label>
+    </div>
+  </div>
+  <div class="form-group">
+    <label>日付</label>
+    <input type="date" id="date">
+  </div>
+  <div class="form-group">
+    <label>カテゴリ</label>
+    <select id="category">
+      <option value="給与">給与</option>
+      <option value="副収入">副収入</option>
+      <option value="食費">食費</option>
+      <option value="交通費">交通費</option>
+      <option value="光熱費">光熱費</option>
+      <option value="娯楽">娯楽</option>
+      <option value="医療">医療</option>
+      <option value="その他">その他</option>
+    </select>
+  </div>
+  <div class="form-group">
+    <label>金額（円）</label>
+    <input type="number" id="amount" placeholder="例: 3000" min="0">
+  </div>
+  <div class="form-group">
+    <label>メモ</label>
+    <input type="text" id="memo" placeholder="例: スーパーで買い物">
+  </div>
+  <button onclick="addEntry()">追加する</button>
+</div>
+
+<!-- レシートスキャン -->
+<div id="tab-scan" class="card" style="display:none">
+  <h2>レシートをスキャン</h2>
+  <div class="form-group">
+    <label>レシートの写真を選ぶ</label>
+    <input type="file" id="receipt-file" accept="image/*" onchange="previewImage(this)">
+  </div>
+  <img id="preview-img" class="scan-preview" style="display:none">
+  <button class="btn-scan" id="scan-btn" onclick="scanReceipt()" style="display:none">AIで読み取る</button>
+  <div id="scan-loading" class="loading" style="display:none">AIが読み取り中...</div>
+  <div id="scan-result" style="display:none">
+    <div class="scan-result" id="scan-result-text"></div>
+    <div style="margin-top:12px">
+      <div class="form-group">
+        <label>種別</label>
+        <div class="radio-group">
+          <label><input type="radio" name="scan-type" value="income"> 収入</label>
+          <label><input type="radio" name="scan-type" value="expense" checked> 支出</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>日付</label>
+        <input type="date" id="scan-date">
+      </div>
+      <div class="form-group">
+        <label>金額（円）</label>
+        <input type="number" id="scan-amount">
+      </div>
+      <div class="form-group">
+        <label>カテゴリ</label>
+        <select id="scan-category">
+          <option value="食費">食費</option>
+          <option value="交通費">交通費</option>
+          <option value="光熱費">光熱費</option>
+          <option value="娯楽">娯楽</option>
+          <option value="医療">医療</option>
+          <option value="その他">その他</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>メモ</label>
+        <input type="text" id="scan-memo">
+      </div>
+      <button onclick="addScannedEntry()">家計簿に追加する</button>
+    </div>
+  </div>
+</div>
+
+<!-- サマリー -->
+<div class="card">
+  <h2>残高サマリー</h2>
+  <div class="summary">
+    <div class="summary-item">
+      <div class="label">収入合計</div>
+      <div class="amount income" id="total-income">¥0</div>
+    </div>
+    <div class="summary-item">
+      <div class="label">支出合計</div>
+      <div class="amount expense" id="total-expense">¥0</div>
+    </div>
+    <div class="summary-item">
+      <div class="label">残高</div>
+      <div class="amount balance" id="total-balance">¥0</div>
+    </div>
+  </div>
+</div>
+
+<!-- 一覧 -->
+<div class="card">
+  <h2>収支一覧</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>日付</th><th>種別</th><th>カテゴリ</th><th>金額</th><th>メモ</th><th></th>
+      </tr>
+    </thead>
+    <tbody id="entry-list">
+      <tr><td colspan="6" class="empty">まだデータがありません</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+  const API_KEY = ''; // ← ここに自分のAPIキーを貼る
+
+  let entries = JSON.parse(localStorage.getItem('kakeibo') || '[]');
+  document.getElementById('date').value = new Date().toISOString().split('T')[0];
+
+  function switchTab(tab) {
+    document.getElementById('tab-manual').style.display = tab === 'manual' ? '' : 'none';
+    document.getElementById('tab-scan').style.display = tab === 'scan' ? '' : 'none';
+    document.querySelectorAll('.tab').forEach((t, i) => {
+      t.classList.toggle('active', (i === 0) === (tab === 'manual'));
+    });
+  }
+
+  function save() { localStorage.setItem('kakeibo', JSON.stringify(entries)); }
+  function fmt(n) { return '¥' + n.toLocaleString(); }
+
+  function render() {
+    const list = document.getElementById('entry-list');
+    if (entries.length === 0) {
+      list.innerHTML = '<tr><td colspan="6" class="empty">まだデータがありません</td></tr>';
+    } else {
+      list.innerHTML = [...entries].reverse().map((e, i) => {
+        const realIndex = entries.length - 1 - i;
+        return `<tr>
+          <td>${e.date}</td>
+          <td><span class="tag ${e.type}">${e.type === 'income' ? '収入' : '支出'}</span></td>
+          <td>${e.category}</td>
+          <td style="font-weight:500;color:${e.type === 'income' ? '#27ae60' : '#e74c3c'}">${e.type === 'income' ? '+' : '-'}${fmt(e.amount)}</td>
+          <td style="color:#888">${e.memo || '-'}</td>
+          <td><button class="del-btn" onclick="deleteEntry(${realIndex})">✕</button></td>
+        </tr>`;
+      }).join('');
+    }
+    const income = entries.filter(e => e.type === 'income').reduce((s, e) => s + e.amount, 0);
+    const expense = entries.filter(e => e.type === 'expense').reduce((s, e) => s + e.amount, 0);
+    document.getElementById('total-income').textContent = fmt(income);
+    document.getElementById('total-expense').textContent = fmt(expense);
+    document.getElementById('total-balance').textContent = fmt(income - expense);
+  }
+
+  function addEntry() {
+    const type = document.querySelector('input[name="type"]:checked').value;
+    const date = document.getElementById('date').value;
+    const category = document.getElementById('category').value;
+    const amount = parseInt(document.getElementById('amount').value);
+    const memo = document.getElementById('memo').value;
+    if (!date) { alert('日付を入力してください'); return; }
+    if (!amount || amount <= 0) { alert('正しい金額を入力してください'); return; }
+    entries.push({ type, date, category, amount, memo });
+    save(); render();
+    document.getElementById('amount').value = '';
+    document.getElementById('memo').value = '';
+  }
+
+  function deleteEntry(index) {
+    if (confirm('このデータを削除しますか？')) {
+      entries.splice(index, 1); save(); render();
+    }
+  }
+
+  function previewImage(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = document.getElementById('preview-img');
+      img.src = e.target.result;
+      img.style.display = 'block';
+      document.getElementById('scan-btn').style.display = 'block';
+      document.getElementById('scan-result').style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function scanReceipt() {
+    const file = document.getElementById('receipt-file').files[0];
+    if (!file) return;
+
+    document.getElementById('scan-btn').disabled = true;
+    document.getElementById('scan-loading').style.display = 'block';
+    document.getElementById('scan-result').style.display = 'none';
+
+    const reader = new FileReader();
+    reader.onload = async e => {
+      const base64 = e.target.result.split(',')[1];
+      const mediaType = file.type;
+
+      try {
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': API_KEY,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true'
+          },
+          body: JSON.stringify({
+            model: 'claude-opus-4-5',
+            max_tokens: 1024,
+            messages: [{
+              role: 'user',
+              content: [
+                { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+                { type: 'text', text: 'このレシートから以下の情報を読み取り、JSON形式のみで返してください。他の文章は不要です。\n{"date":"YYYY-MM-DD","amount":数字のみ,"category":"食費/交通費/光熱費/娯楽/医療/その他のどれか","memo":"店名や内容"}' }
+              ]
+            }]
+          })
+        });
+
+        const data = await response.json();
+        const text = data.content[0].text;
+        const clean = text.replace(/```json|```/g, '').trim();
+        const parsed = JSON.parse(clean);
+
+        document.getElementById('scan-result-text').textContent =
+          `読み取り結果：${parsed.date} / ¥${Number(parsed.amount).toLocaleString()} / ${parsed.category} / ${parsed.memo}`;
+        document.getElementById('scan-date').value = parsed.date || new Date().toISOString().split('T')[0];
+        document.getElementById('scan-amount').value = parsed.amount || '';
+        document.getElementById('scan-memo').value = parsed.memo || '';
+        const catSelect = document.getElementById('scan-category');
+        for (let opt of catSelect.options) {
+          if (opt.value === parsed.category) { catSelect.value = parsed.category; break; }
+        }
+        document.getElementById('scan-result').style.display = 'block';
+
+      } catch (err) {
+        alert('読み取りに失敗しました。レシートの画像が鮮明か確認してください。');
+        console.error(err);
+      }
+
+      document.getElementById('scan-loading').style.display = 'none';
+      document.getElementById('scan-btn').disabled = false;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function addScannedEntry() {
+    const type = document.querySelector('input[name="scan-type"]:checked').value;
+    const date = document.getElementById('scan-date').value;
+    const amount = parseInt(document.getElementById('scan-amount').value);
+    const category = document.getElementById('scan-category').value;
+    const memo = document.getElementById('scan-memo').value;
+    if (!date || !amount || amount <= 0) { alert('日付と金額を確認してください'); return; }
+    entries.push({ type, date, category, amount, memo });
+    save(); render();
+    switchTab('manual');
+    document.getElementById('scan-result').style.display = 'none';
+    document.getElementById('preview-img').style.display = 'none';
+    document.getElementById('scan-btn').style.display = 'none';
+    document.getElementById('receipt-file').value = '';
+    alert('追加しました！');
+  }
+
+  render();
+</script>
+</body>
+</html>
