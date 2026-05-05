@@ -31,12 +31,24 @@ export default async function handler(req, res) {
     });
 
     const data = await response.json();
+
+    if (!response.ok) {
+      console.error('Anthropic error:', JSON.stringify(data));
+      return res.status(500).json({ error: 'APIエラー: ' + (data.error?.message || JSON.stringify(data)) });
+    }
+
+    if (!data.content || data.content.length === 0) {
+      console.error('Empty content:', JSON.stringify(data));
+      return res.status(500).json({ error: 'レスポンスが空です' });
+    }
+
     const text = data.content[0].text;
     const clean = text.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
     res.status(200).json(parsed);
+
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: '読み取りに失敗しました' });
+    console.error('Handler error:', err);
+    res.status(500).json({ error: err.message });
   }
 }
