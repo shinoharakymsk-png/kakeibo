@@ -1,4 +1,4 @@
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -40,4 +40,19 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'APIエラー: ' + (data.error?.message || JSON.stringify(data)) });
     }
 
-    const text = data
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!text) {
+      console.error('Empty response:', JSON.stringify(data));
+      return res.status(500).json({ error: 'レスポンスが空です' });
+    }
+
+    const clean = text.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean);
+    res.status(200).json(parsed);
+
+  } catch (err) {
+    console.error('Handler error:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
