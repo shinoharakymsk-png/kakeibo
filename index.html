@@ -62,21 +62,28 @@
     .chart-legend { flex: 1; min-width: 120px; }
     .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }
     .legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
-    /* 目標 */
-    .goal-bar-wrap { background: #f0f0f0; border-radius: 8px; height: 16px; margin: 8px 0; overflow: hidden; }
+    .goal-bar-wrap { background: #f0f0f0; border-radius: 8px; height: 12px; margin: 6px 0; overflow: hidden; }
     .goal-bar { height: 100%; border-radius: 8px; transition: width 0.4s; }
-    .goal-status { font-size: 13px; font-weight: 500; margin-top: 4px; }
-    .goal-success { color: #2ecc71; }
-    .goal-fail { color: #e74c3c; }
-    /* 検索 */
+    .goal-row { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
+    .goal-row:last-child { border-bottom: none; }
+    .goal-month { font-size: 13px; font-weight: 500; min-width: 70px; }
+    .goal-detail { flex: 1; font-size: 12px; color: #888; }
+    .goal-badge { font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 12px; }
+    .badge-success { background: #e8f8ef; color: #27ae60; }
+    .badge-fail { background: #fdecea; color: #e74c3c; }
+    .badge-none { background: #f0f0f0; color: #888; }
+    .rate-wrap { display: flex; gap: 12px; margin-bottom: 16px; }
+    .rate-item { flex: 1; text-align: center; padding: 12px; border-radius: 8px; }
+    .rate-success { background: #e8f8ef; }
+    .rate-fail { background: #fdecea; }
+    .rate-num { font-size: 24px; font-weight: 700; }
+    .rate-label { font-size: 12px; color: #888; margin-top: 4px; }
     .search-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
     .search-row input, .search-row select { flex: 1; min-width: 120px; margin: 0; }
-    /* カテゴリ管理 */
     .cat-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
     .cat-tag { display: inline-flex; align-items: center; gap: 4px; background: #f0f0f0; border-radius: 20px; padding: 4px 12px; font-size: 13px; }
     .cat-del { background: none; border: none; color: #aaa; cursor: pointer; font-size: 14px; padding: 0; margin: 0; width: auto; }
     .cat-del:hover { color: #e74c3c; }
-    /* 印刷 */
     @media print {
       .no-print { display: none !important; }
       body { background: #fff; padding: 0; }
@@ -108,10 +115,7 @@
     </div>
   </div>
   <div class="form-group"><label>日付</label><input type="date" id="date"></div>
-  <div class="form-group">
-    <label>カテゴリ</label>
-    <select id="category"></select>
-  </div>
+  <div class="form-group"><label>カテゴリ</label><select id="category"></select></div>
   <div class="form-group"><label>金額（円）</label><input type="number" id="amount" placeholder="例: 3000" min="0"></div>
   <div class="form-group"><label>メモ</label><input type="text" id="memo" placeholder="例: スーパーで買い物"></div>
   <button onclick="addEntry()">追加する</button>
@@ -127,7 +131,7 @@
   <div class="cal-grid" id="cal-grid"></div>
 </div>
 
-<!-- 円グラフ -->
+<!-- グラフ -->
 <div id="tab-chart" class="card" style="display:none">
   <h2>カテゴリ別支出</h2>
   <div class="form-group"><select id="chart-month" onchange="renderChart()"></select></div>
@@ -143,13 +147,24 @@
 
 <!-- 目標 -->
 <div id="tab-goal" class="card" style="display:none">
-  <h2>月間支出目標</h2>
-  <div class="form-group">
-    <label>目標金額（円）</label>
-    <input type="number" id="goal-input" placeholder="例: 100000" min="0">
+  <h2>月別目標を設定</h2>
+  <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:16px">
+    <div style="flex:1">
+      <label style="font-size:13px;color:#666;margin-bottom:4px;display:block">月</label>
+      <input type="month" id="goal-month">
+    </div>
+    <div style="flex:1">
+      <label style="font-size:13px;color:#666;margin-bottom:4px;display:block">目標金額（円）</label>
+      <input type="number" id="goal-input" placeholder="例: 100000" min="0">
+    </div>
+    <button class="btn-sm btn-success" onclick="saveGoal()" style="margin:0;padding:9px 16px">設定</button>
   </div>
-  <button onclick="saveGoal()">目標を設定する</button>
-  <div id="goal-result" style="margin-top:16px"></div>
+
+  <h2>達成率サマリー</h2>
+  <div class="rate-wrap" id="rate-summary"></div>
+
+  <h2>月別達成状況</h2>
+  <div id="goal-list"></div>
 </div>
 
 <!-- 検索 -->
@@ -213,18 +228,20 @@
 <script>
   let entries = JSON.parse(localStorage.getItem('kakeibo') || '[]');
   let categories = JSON.parse(localStorage.getItem('kakeibo_cats') || '["給与","副収入","食費","交通費","光熱費","娯楽","医療","その他"]');
-  let goal = parseInt(localStorage.getItem('kakeibo_goal') || '0');
+  let goals = JSON.parse(localStorage.getItem('kakeibo_goals') || '{}'); // { "2026-05": 100000, ... }
   let calYear, calMonth;
   let pieChart = null, barChart = null;
   const today = new Date();
   const COLORS = ['#4a7cf7','#e74c3c','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e67e22','#e91e63'];
 
   document.getElementById('date').value = today.toISOString().split('T')[0];
+  document.getElementById('goal-month').value = today.toISOString().slice(0,7);
   calYear = today.getFullYear();
   calMonth = today.getMonth();
 
   function saveData() { localStorage.setItem('kakeibo', JSON.stringify(entries)); }
   function saveCats() { localStorage.setItem('kakeibo_cats', JSON.stringify(categories)); }
+  function saveGoals() { localStorage.setItem('kakeibo_goals', JSON.stringify(goals)); }
   function fmt(n) { return '¥' + n.toLocaleString(); }
 
   function buildCategorySelects() {
@@ -256,16 +273,13 @@
     if (!val) { alert('カテゴリ名を入力してください'); return; }
     if (categories.includes(val)) { alert('すでに存在します'); return; }
     categories.push(val);
-    saveCats();
-    buildCategorySelects();
+    saveCats(); buildCategorySelects();
     document.getElementById('new-cat').value = '';
   }
 
   function deleteCategory(i) {
     if (confirm(`「${categories[i]}」を削除しますか？`)) {
-      categories.splice(i, 1);
-      saveCats();
-      buildCategorySelects();
+      categories.splice(i, 1); saveCats(); buildCategorySelects();
     }
   }
 
@@ -300,7 +314,7 @@
     }
     const income = entries.filter(e=>e.type==='income').reduce((s,e)=>s+e.amount,0);
     const expense = entries.filter(e=>e.type==='expense').reduce((s,e)=>s+e.amount,0);
-    const yearExpense = entries.filter(e=>e.type==='expense' && e.date.startsWith(today.getFullYear()+''))
+    const yearExpense = entries.filter(e=>e.type==='expense'&&e.date.startsWith(today.getFullYear()+''))
       .reduce((s,e)=>s+e.amount,0);
     document.getElementById('total-income').textContent = fmt(income);
     document.getElementById('total-expense').textContent = fmt(expense);
@@ -414,7 +428,6 @@
       </div>`).join('');
   }
 
-  // 棒グラフ
   function renderBarChart() {
     const months = [...new Set(entries.map(e => e.date.slice(0,7)))].sort().slice(-6);
     const incomes = months.map(m => entries.filter(e=>e.type==='income'&&e.date.startsWith(m)).reduce((s,e)=>s+e.amount,0));
@@ -436,35 +449,94 @@
 
   // 目標
   function saveGoal() {
+    const month = document.getElementById('goal-month').value;
     const val = parseInt(document.getElementById('goal-input').value);
+    if (!month) { alert('月を選択してください'); return; }
     if (!val || val <= 0) { alert('正しい金額を入力してください'); return; }
-    goal = val;
-    localStorage.setItem('kakeibo_goal', goal);
+    goals[month] = val;
+    saveGoals();
     renderGoal();
+    document.getElementById('goal-input').value = '';
+    alert(`${month} の目標を ${fmt(val)} に設定しました！`);
   }
 
   function renderGoal() {
-    const thisMonth = today.toISOString().slice(0,7);
-    const monthExpense = entries.filter(e=>e.type==='expense'&&e.date.startsWith(thisMonth)).reduce((s,e)=>s+e.amount,0);
-    const result = document.getElementById('goal-result');
-    if (goal <= 0) {
-      result.innerHTML = '<p style="color:#888;font-size:13px">目標金額を設定してください</p>';
-      document.getElementById('goal-input').value = '';
+    // 目標が設定されている月 + データがある月を集める
+    const allMonths = [...new Set([
+      ...Object.keys(goals),
+      ...entries.map(e => e.date.slice(0,7))
+    ])].sort().reverse();
+
+    const summary = document.getElementById('rate-summary');
+    const list = document.getElementById('goal-list');
+
+    if (allMonths.length === 0) {
+      summary.innerHTML = '<p style="color:#bbb;font-size:13px">データがありません</p>';
+      list.innerHTML = '';
       return;
     }
-    document.getElementById('goal-input').value = goal;
-    const pct = Math.min(Math.round(monthExpense / goal * 100), 100);
-    const success = monthExpense <= goal;
-    const color = monthExpense / goal < 0.7 ? '#2ecc71' : monthExpense / goal < 1 ? '#f39c12' : '#e74c3c';
-    result.innerHTML = `
-      <p style="font-size:13px;color:#555;margin-bottom:8px">今月（${thisMonth.slice(5)}月）の支出</p>
-      <p style="font-size:20px;font-weight:700;color:${color}">${fmt(monthExpense)} / ${fmt(goal)}</p>
-      <div class="goal-bar-wrap"><div class="goal-bar" style="width:${pct}%;background:${color}"></div></div>
-      <p class="goal-status ${success ? 'goal-success' : 'goal-fail'}">
-        ${success ? `✅ 目標達成！あと${fmt(goal - monthExpense)}使えます` : `❌ 目標超過！${fmt(monthExpense - goal)}オーバーです`}
-      </p>
-      <p style="font-size:12px;color:#888;margin-top:8px">達成率: ${pct}%</p>
-    `;
+
+    // 目標が設定されている月だけ達成率を計算
+    const goalMonths = allMonths.filter(m => goals[m]);
+    let successCount = 0, failCount = 0;
+
+    const rows = goalMonths.map(m => {
+      const expense = entries.filter(e=>e.type==='expense'&&e.date.startsWith(m)).reduce((s,e)=>s+e.amount,0);
+      const g = goals[m];
+      const pct = Math.min(Math.round(expense / g * 100), 100);
+      const success = expense <= g;
+      if (success) successCount++; else failCount++;
+      const color = expense / g < 0.7 ? '#2ecc71' : expense / g < 1 ? '#f39c12' : '#e74c3c';
+      const [y, mo] = m.split('-');
+      return `
+        <div class="goal-row">
+          <div class="goal-month">${y}年${parseInt(mo)}月</div>
+          <div style="flex:1">
+            <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+              <span style="color:${color};font-weight:500">${fmt(expense)}</span>
+              <span style="color:#888">目標: ${fmt(g)}</span>
+            </div>
+            <div class="goal-bar-wrap">
+              <div class="goal-bar" style="width:${pct}%;background:${color}"></div>
+            </div>
+            <div style="font-size:11px;color:#888">${pct}%使用</div>
+          </div>
+          <div style="margin-left:8px">
+            <span class="goal-badge ${success ? 'badge-success' : 'badge-fail'}">${success ? '✅ 達成' : '❌ 超過'}</span>
+          </div>
+        </div>`;
+    });
+
+    // 目標未設定の月も表示
+    const noGoalMonths = allMonths.filter(m => !goals[m]);
+    const noGoalRows = noGoalMonths.map(m => {
+      const expense = entries.filter(e=>e.type==='expense'&&e.date.startsWith(m)).reduce((s,e)=>s+e.amount,0);
+      const [y, mo] = m.split('-');
+      return `
+        <div class="goal-row">
+          <div class="goal-month">${y}年${parseInt(mo)}月</div>
+          <div style="flex:1;font-size:12px;color:#aaa">支出: ${fmt(expense)}　目標未設定</div>
+          <span class="goal-badge badge-none">－</span>
+        </div>`;
+    });
+
+    const total = goalMonths.length;
+    const successRate = total > 0 ? Math.round(successCount / total * 100) : 0;
+    const failRate = total > 0 ? Math.round(failCount / total * 100) : 0;
+
+    summary.innerHTML = total === 0
+      ? '<p style="color:#bbb;font-size:13px;width:100%">目標を設定すると達成率が表示されます</p>'
+      : `
+        <div class="rate-item rate-success" style="flex:1">
+          <div class="rate-num" style="color:#27ae60">${successRate}%</div>
+          <div class="rate-label">達成率（${successCount}/${total}ヶ月）</div>
+        </div>
+        <div class="rate-item rate-fail" style="flex:1">
+          <div class="rate-num" style="color:#e74c3c">${failRate}%</div>
+          <div class="rate-label">超過率（${failCount}/${total}ヶ月）</div>
+        </div>`;
+
+    list.innerHTML = rows.join('') + noGoalRows.join('');
   }
 
   // 検索
@@ -487,10 +559,10 @@
       return;
     }
     div.innerHTML = `
-      <p style="font-size:13px;color:#888;margin-bottom:8px">${results.length}件 合計: <strong style="color:${total>=0?'#27ae60':'#e74c3c'}">${fmt(Math.abs(total))}</strong></p>
+      <p style="font-size:13px;color:#888;margin-bottom:8px">${results.length}件　合計: <strong style="color:${total>=0?'#27ae60':'#e74c3c'}">${fmt(Math.abs(total))}</strong></p>
       <table>
         <thead><tr><th>日付</th><th>種別</th><th>カテゴリ</th><th>金額</th><th>メモ</th></tr></thead>
-        <tbody>${results.reverse().map(e => `<tr>
+        <tbody>${[...results].reverse().map(e => `<tr>
           <td>${e.date}</td>
           <td><span class="tag ${e.type}">${e.type==='income'?'収入':'支出'}</span></td>
           <td>${e.category}</td>
@@ -512,10 +584,8 @@
     a.click();
   }
 
-  // 印刷
   function printPage() { window.print(); }
 
-  // 全削除
   function clearAll() {
     if (confirm('全データを削除しますか？この操作は取り消せません。')) {
       entries = []; saveData(); render();
